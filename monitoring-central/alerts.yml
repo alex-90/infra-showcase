@@ -1,0 +1,42 @@
+groups:
+  - name: base
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: экспортёр {{ $labels.job }} недоступен"
+
+      - alert: DiskSpaceLow
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: диск / заполнен на {{ $value | printf \"%.0f\" }}%"
+
+      - alert: MemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: доступно памяти {{ $value | printf \"%.0f\" }}%"
+
+      - alert: ContainerDown
+        expr: (time() - max by (instance, name) (container_last_seen{name!=""}) > 180) and on(instance) (up{job="cadvisor"} == 1)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: контейнер {{ $labels.name }} не работает"
+
+      - alert: VPSNoData
+        expr: absent_over_time(up{instance="Hostkey - RU", job="node"}[10m])
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Hostkey - RU: нет метрик больше 15 минут (VPS, vmagent или туннель лежит)"

@@ -1,0 +1,9 @@
+[Unit]
+Description=Ежедневный запуск gps last
+
+[Timer]
+OnCalendar=*-*-* 00:10:00 Asia/Yekaterinburg
+Persistent=true
+
+[Install]
+WantedBy=timers.target

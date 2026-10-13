@@ -1,0 +1,94 @@
+# Основной (продакшн/VPS) конфиг.
+#   docker compose up -d --build
+# Код сайта лежит в ./html и обновляется через git (CI/CD).
+#
+# Перед запуском обязательно смените пароли в .env
+# (APACHE_PASS, SYS_PASS, MYSQL_*).
+#
+# Локальная разработка — отдельным файлом:
+#   docker compose -f docker-compose.local.yml up -d --build
+
+services:
+  web:
+    image: registry.gitlab.com/example/app/web:latest
+    container_name: gps_web
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    # Порт 80/443 наружу отдаёт Caddy (HTTPS). Сам Apache торчит только в сеть.
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./html:/var/www/html
+    environment:
+      DB_HOST: db
+      SYS_USER: ${SYS_USER}
+      SYS_PASS: ${SYS_PASS}
+      APACHE_USER: ${APACHE_USER}
+      APACHE_PASS: ${APACHE_PASS}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+    depends_on:
+      - db
+
+  db:
+    image: mariadb:11
+    container_name: gps_db
+    restart: always
+    command: --default-time-zone=Asia/Yekaterinburg
+    environment:
+      TZ: Asia/Yekaterinburg
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db-init:/docker-entrypoint-initdb.d
+    # Порт наружу не публикуем — БД доступна только внутри docker-сети.
+    # Для доступа с самого VPS можно раскомментировать (только localhost):
+    #ports:
+    #  - "127.0.0.1:3306:3306"
+
+  phpmyadmin:
+    image: phpmyadmin:5.2
+    container_name: gps_pma
+    restart: always
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 256M
+      APACHE_USER: ${APACHE_USER}
+      APACHE_PASS: ${APACHE_PASS}
+    # Генерируем .htpasswd из env, затем возвращаемся в штатный entrypoint
+    # (важно вызвать его с apache2-foreground — иначе не создаётся config.secret.inc.php)
+    command: >
+      bash -c "htpasswd -bc /etc/apache2/.htpasswd \"$$APACHE_USER\" \"$$APACHE_PASS\" && exec /docker-entrypoint.sh apache2-foreground"
+    volumes:
+      - ./pma-auth.conf:/etc/apache2/conf-enabled/zz-pma-auth.conf:ro
+    # Наружу не публикуем — HTTPS на :8443 отдаёт Caddy (проксирует сюда)
+    depends_on:
+      - db
+
+  caddy:
+    image: caddy:2
+    container_name: gps_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"            # phpMyAdmin по HTTPS
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # сертификаты Let's Encrypt — обязательно том
+      - caddy_config:/config
+    depends_on:
+      - web
+      - phpmyadmin
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:

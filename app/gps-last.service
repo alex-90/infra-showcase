@@ -1,0 +1,8 @@
+[Unit]
+Description=Yii: gps last
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec -u www-data -w /var/www/html/protected gps_web php yiic gps last

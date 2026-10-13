@@ -1,0 +1,29 @@
+stages: [test, deploy]
+
+lint:
+  stage: test
+  image: php:8.3-cli-alpine
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - |
+      find . -name '*.php' \
+        -not -path '*/vendor/*' -not -path '*/vendors/*' \
+        -not -path './framework/*' -not -path './Classes/*' \
+        -print0 \
+        | xargs -0 -n1 sh -c 'out=$(php -l "$0" 2>&1) || { echo "$out"; exit 1; }'
+
+deploy:
+  stage: deploy
+  image: alpine:3.20
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  before_script:
+    - apk add --no-cache ansible openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null
+    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+  script:
+    - ansible-playbook -i deploy/inventory.ini deploy/deploy.yml -e repo=$APP_REPO

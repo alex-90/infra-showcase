@@ -1,0 +1,15 @@
+# Caddy: автоматический HTTPS (Let's Encrypt) для сайта.
+# Сертификат получается и продлевается автоматически, хранится в томе caddy_data.
+
+{
+    email admin@example.com
+}
+
+app.example.com {
+    reverse_proxy web:80
+}
+
+# phpMyAdmin по HTTPS на отдельном порту (тот же сертификат)
+app.example.com:8443 {
+    reverse_proxy phpmyadmin:80
+}

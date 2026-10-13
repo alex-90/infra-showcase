@@ -1,0 +1,16 @@
+[Unit]
+Description=Reverse SSH tunnel: VPS 127.0.0.1:29090 -> laptop Prometheus
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/ssh -N -i %h/.ssh/tunnel_vps \
+  -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=accept-new \
+  -R 127.0.0.1:29090:127.0.0.1:9090 \
+  -R 127.0.0.1:23100:127.0.0.1:3100 \
+  tunnel@vps.example.com 
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target

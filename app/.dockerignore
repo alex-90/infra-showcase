@@ -1,0 +1,5 @@
+.env
+html/
+html.bak/
+.git
+db-init/

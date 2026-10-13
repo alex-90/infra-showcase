@@ -1,0 +1,67 @@
+// Логи всех Docker-контейнеров
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = []
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  labels        = { job = "docker" }
+  forward_to    = [loki.write.laptop.receiver]
+}
+
+// Системные логи (sshd, docker, cron...)
+discovery.relabel "journal" {
+  targets = []
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+}
+
+loki.source.journal "journal" {
+  max_age       = "12h"
+  relabel_rules = discovery.relabel.journal.rules
+  labels        = { job = "journal" }
+  forward_to    = [loki.write.laptop.receiver]
+}
+
+// Отправка в Loki на ноуте через туннель
+loki.write "laptop" {
+  endpoint {
+    url = "http://127.0.0.1:23100/loki/api/v1/push"
+  }
+  external_labels = { host = "vps" }
+}
+
+// Лог fail2ban
+local.file_match "fail2ban" {
+  path_targets = [{ "__path__" = "/var/log/fail2ban.log", job = "fail2ban" }]
+}
+
+loki.source.file "fail2ban" {
+  targets    = local.file_match.fail2ban.targets
+  forward_to = [loki.process.fail2ban.receiver]
+}
+
+loki.process "fail2ban" {
+  stage.regex {
+    expression = "^(?P<ts>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2},\\d{3})"
+  }
+  stage.timestamp {
+    source   = "ts"
+    format   = "2006-01-02 15:04:05,000"
+    location = "Europe/Moscow"
+  }
+  forward_to = [loki.write.laptop.receiver]
+}

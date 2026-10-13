@@ -1,0 +1,49 @@
+services:
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=127.0.0.1:9100
+    volumes:
+      - /:/host:ro,rslave
+    mem_limit: 48m
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    command:
+      - --housekeeping_interval=30s
+      - --docker_only=true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "127.0.0.1:8081:8080"
+    mem_limit: 96m
+
+  vmagent:
+    image: victoriametrics/vmagent:latest
+    container_name: vmagent
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -httpListenAddr=127.0.0.1:8429
+      - -promscrape.config=/etc/vmagent/scrape.yml
+      - -remoteWrite.url=http://127.0.0.1:29090/api/v1/write
+      - -remoteWrite.forcePromProto
+      - -remoteWrite.tmpDataPath=/vmagent-data
+      - -remoteWrite.maxDiskUsagePerURL=1GB
+      - -memory.allowedPercent=10
+    volumes:
+      - ./scrape.yml:/etc/vmagent/scrape.yml:ro
+      - vmagent_data:/vmagent-data
+volumes:
+  vmagent_data:

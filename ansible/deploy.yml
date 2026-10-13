@@ -1,0 +1,19 @@
+- hosts: vps
+  vars:
+    stack_dir: /opt/app
+    site_dir: "{{ stack_dir }}/html"
+    repo: git@github.com:example/app.git
+    branch: main
+  tasks:
+    - name: Обновить код
+      ansible.builtin.git:
+        repo: "{{ repo }}"
+        dest: "{{ site_dir }}"
+        version: "{{ branch }}"
+        key_file: /root/.ssh/deploy_web
+        accept_hostkey: true
+      register: code
+
+    - name: Показать задеплоенный коммит
+      ansible.builtin.debug:
+        msg: "{{ code.before }} → {{ code.after }}"

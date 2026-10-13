@@ -1,0 +1,11 @@
+[Unit]
+Description=SSH tunnel to VPS exporters
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -o BatchMode=yes -L 29100:127.0.0.1:9100 -L 28081:127.0.0.1:8081 root@vps.example.com
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

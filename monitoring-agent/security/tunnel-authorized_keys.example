@@ -1,0 +1,1 @@
+restrict,port-forwarding,permitlisten="127.0.0.1:29090",permitlisten="127.0.0.1:23100",command="/bin/false" ssh-ed25519 AAAA...example laptop-tunnel

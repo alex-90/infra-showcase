@@ -1,0 +1,32 @@
+image:
+  repository: registry.gitlab.com/example/gps-web/k8s
+  tag: "82a6a9b8"
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+ingress:
+  host: gps.localhost
+
+gps:
+  enabled: true
+  port: 20335
+
+db:
+  image: mariadb:11
+  storage: 1Gi
+  secretName: gps-db        # создаётся вручную, в чарт не кладём
+
+web:
+  secretName: gps-web
+
+resources:
+  web:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 512Mi }
+  db:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 512Mi }
+
+imagePullSecrets:
+  - gitlab-registry

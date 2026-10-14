@@ -1,0 +1,5 @@
+apiVersion: v2
+name: gps
+description: Car Tracker (PHP/Yii + MariaDB + GPS TCP server)
+version: 0.1.0
+appVersion: "dev3"

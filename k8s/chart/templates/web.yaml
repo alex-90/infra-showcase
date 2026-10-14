@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: web
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.web.secretName }}
+          env:
+            - name: DB_HOST
+              value: db-0.db
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: {{ .Values.db.secretName }}, key: MYSQL_USER } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.db.secretName }}, key: MYSQL_PASSWORD } }
+            - name: DB_NAME
+              valueFrom: { secretKeyRef: { name: {{ .Values.db.secretName }}, key: MYSQL_DATABASE } }
+          ports:
+            - name: http
+              containerPort: 80
+            - name: gps
+              containerPort: {{ .Values.gps.port }}
+          readinessProbe:
+            tcpSocket: { port: 80 }
+            initialDelaySeconds: 5
+          resources:
+            {{- toYaml .Values.resources.web | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+spec:
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http

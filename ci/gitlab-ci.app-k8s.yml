@@ -1,0 +1,59 @@
+stages: [test, build, deploy]
+
+lint:
+  stage: test
+  image: php:8.3-cli-alpine
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - |
+      find . -name '*.php' \
+        -not -path '*/vendor/*' -not -path '*/vendors/*' \
+        -not -path './framework/*' -not -path './Classes/*' \
+        -print0 \
+        | xargs -0 -n1 sh -c 'out=$(php -l "$0" 2>&1) || { echo "$out"; exit 1; }'
+
+build-k8s:
+  stage: build
+  image: docker:27
+  variables:
+    IMAGE: $CI_REGISTRY_IMAGE/k8s
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - echo "$CI_JOB_TOKEN" | docker login -u gitlab-ci-token --password-stdin "$CI_REGISTRY"
+    - docker build -f Dockerfile.k8s -t "$IMAGE:$CI_COMMIT_SHORT_SHA" .
+    - docker push "$IMAGE:$CI_COMMIT_SHORT_SHA"
+
+deploy:
+  stage: deploy
+  image: alpine:3.20
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  before_script:
+    - apk add --no-cache ansible openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$SSH_KEY" | base64 -d > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null
+    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+  script:
+    - ansible-playbook -i deploy/inventory.ini deploy/deploy.yml -e repo=git@gitlab.com:example/gps-web.git
+
+bump-k8s:
+  stage: deploy
+  image:
+    name: alpine/git
+    entrypoint: [""]
+  needs: [build-k8s]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - git clone "https://oauth2:${GPS_DEPLOY_TOKEN}@gitlab.com/example/gps-deploy.git"
+    - cd gps-deploy
+    - 'sed -i "s|^  tag: .*|  tag: \"${CI_COMMIT_SHORT_SHA}\"|" gps/values.yaml'
+    - git config user.email "ci@gitlab.com"
+    - git config user.name "GitLab CI"
+    - 'git diff --quiet && { echo "tag already ${CI_COMMIT_SHORT_SHA}, nothing to do"; exit 0; }'
+    - 'git commit -am "gps: ${CI_COMMIT_SHORT_SHA} (${CI_COMMIT_TITLE})"'
+    - git push

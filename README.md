@@ -47,7 +47,9 @@ reverse SSH-туннели, которые он сам поднимает к VPS
 | CI/CD | GitLab CI, GitHub Actions, Ansible |
 | Метрики | Prometheus, vmagent (VictoriaMetrics), node_exporter, cAdvisor |
 | Логи | Grafana Loki, Grafana Alloy |
+| Свои экспортёры | Bash, Docker, node_exporter textfile collector |
 | Визуализация и алерты | Grafana, Alertmanager → Telegram |
+| Kubernetes | k3s (k3d), Helm, ArgoCD (GitOps), Traefik Ingress, ServiceLB |
 | Прокси и TLS | Caddy (автоматический Let's Encrypt) |
 | Безопасность | SSH только по ключам, fail2ban, ограниченные SSH-ключи |
 | ОС | Ubuntu, systemd |
@@ -63,7 +65,43 @@ monitoring-central/     Prometheus, Grafana, Loki, Alertmanager, дашборд�
 monitoring-agent/       то, что стоит на VPS: vmagent, Alloy, экспортёры
   security/             fail2ban, sshd hardening, пример ограниченного ключа
 tunnels/                systemd-юниты SSH-туннелей
+k8s/                    перенос приложения в Kubernetes
+  chart/                Helm-чарт: MariaDB (StatefulSet + PVC), web, Ingress, TCP LoadBalancer
+  argocd/               Application (auto-sync, self-heal, prune) и Ingress для UI
+  Dockerfile.k8s        образ с кодом приложения
 ```
+
+## Kubernetes и GitOps
+
+Приложение перенесено из Docker Compose в Kubernetes (k3s) и деплоится по модели GitOps:
+
+```
+git push (код приложения)
+ └─ GitLab CI на self-hosted runner
+      lint → сборка образа app/k8s:<commit-sha> → GitLab Container Registry
+                └─ job bump: записывает новый тег в репозиторий с чартом
+                              └─ ArgoCD видит коммит → rolling update в кластере
+```
+
+Кластеру не нужен входящий доступ: ArgoCD сам забирает изменения из git.
+Ручные правки в кластере (`kubectl scale`, `edit`) ArgoCD откатывает к состоянию из git (self-heal).
+
+**Ключевые решения:**
+
+- **MariaDB в StatefulSet с PersistentVolumeClaim.** Под получает стабильное имя `db-0`
+  и всегда тот же том. Данные переживают удаление пода, переустановку чарта и смену
+  инструмента деплоя (kubectl → Helm → ArgoCD).
+- **Код запечён в образ, тег = хэш коммита.** Никаких `latest`: каждая версия однозначно
+  связана с коммитом, откат — смена тега в git.
+- **Конфигурация из окружения.** Один образ работает на VPS и в кластере; пароли —
+  в Kubernetes Secrets и не попадают в git.
+- **Корректная остановка.** Apache запускается как PID 1 (не через `apachectl`)
+  с `STOPSIGNAL SIGWINCH`: при rolling update текущие запросы дорабатываются,
+  под завершается за ~1 с вместо SIGKILL по таймауту.
+- **GPS-трекеры по сырому TCP** выведены через Service типа LoadBalancer,
+  HTTP — через Traefik Ingress с маршрутизацией по имени хоста.
+- **Self-hosted GitLab Runner** (Docker executor) — сборки не зависят от очередей
+  и сбоев общих раннеров, кеш слоёв переиспользуется.
 
 ## Ключевые решения
 
@@ -86,6 +124,13 @@ Alloy собирает логи Docker-контейнеров, journald и fail2
 `restrict,port-forwarding,permitlisten=...,command="/bin/false"`.
 Через него нельзя получить shell, можно только открыть разрешённые порты
 (см. `monitoring-agent/security/tunnel-authorized_keys.example`).
+
+**Мониторинг Wi-Fi устройств домашней сети.**
+Самописный экспортёр `lan-scanner` (shell-скрипт в контейнере) сканирует LAN,
+сопоставляет MAC-адреса с понятными именами (`names.txt`) и пишет метрики
+в формате Prometheus в textfile collector node_exporter. В Grafana есть дашборд
+с количеством подключённых устройств и их присутствием во времени
+(`monitoring-central/dashboards/`).
 
 **Алерты по логам.**
 Правило в Grafana считает баны fail2ban в Loki и отправляет их в Alertmanager.
@@ -132,6 +177,7 @@ cd app && cp .env.example .env && docker compose up -d
 
 ## Дальше
 
-- [ ] перенести приложение в Kubernetes (k3s), Helm-чарт
+- [x] перенести приложение в Kubernetes (k3s), Helm-чарт, GitOps через ArgoCD
+- [ ] TLS в кластере через cert-manager, мониторинг кластера (kube-prometheus-stack)
 - [ ] инфраструктура VPS через Terraform
 - [ ] роли Ansible для агентов мониторинга и hardening

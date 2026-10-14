@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gps
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/example/gps-deploy.git
+    targetRevision: main
+    path: gps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gps
+  syncPolicy:
+    automated:
+      prune: true      # удалять из кластера то, что убрали из git
+      selfHeal: true   # возвращать как в git, если кто-то поменял руками

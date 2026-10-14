@@ -1,0 +1,15 @@
+{{- if .Values.gps.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-gps
+spec:
+  type: LoadBalancer
+  selector:
+    app: web
+  ports:
+    - name: gps
+      protocol: TCP
+      port: {{ .Values.gps.port }}
+      targetPort: gps
+{{- end }}
